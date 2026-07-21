@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shift Board — Team A</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0b1220;
+    --panel:#111a2e;
+    --panel-2:#151f38;
+    --line:#243050;
+    --text:#e8ecf4;
+    --muted:#8892a6;
+    --amber:#f2a93b;
+    --green:#3ddc97;
+    --red:#e5484d;
+    --blue:#4f8ef7;
+    --yellow:#f2c94c;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;min-height:100vh;}
+  a{color:var(--amber);}
+  ::selection{background:var(--amber);color:#0b1220;}
+  :focus-visible{outline:2px solid var(--amber);outline-offset:2px;}
+
+  .board-header{background:linear-gradient(180deg,#0d1526,#0b1220);border-bottom:1px solid var(--line);padding:18px 20px 0;position:sticky;top:0;z-index:20;}
+  .board-top{display:flex;justify-content:space-between;align-items:flex-start;max-width:1100px;margin:0 auto;flex-wrap:wrap;gap:10px;}
+  .brand{display:flex;align-items:center;gap:10px;}
+  .brand .mark{width:34px;height:34px;border-radius:8px;background:repeating-linear-gradient(45deg,var(--amber) 0 6px,#0b1220 6px 12px);flex-shrink:0;}
+  .brand h1{font-family:'Space Grotesk',sans-serif;font-size:20px;margin:0;letter-spacing:.2px;}
+  .brand p{margin:0;font-size:12px;color:var(--muted);}
+  .clock{font-family:'IBM Plex Mono',monospace;text-align:right;}
+  .clock .time{font-size:22px;font-weight:600;color:var(--amber);}
+  .clock .date{font-size:12px;color:var(--muted);}
+
+  .tabs{max-width:1100px;margin:16px auto 0;display:flex;gap:2px;overflow-x:auto;}
+  .tab-btn{font-family:'Space Grotesk',sans-serif;background:transparent;border:none;color:var(--muted);padding:10px 16px;font-size:13px;cursor:pointer;white-space:nowrap;border-bottom:2px solid transparent;}
+  .tab-btn.active{color:var(--text);border-bottom-color:var(--amber);}
+  .tab-btn:hover{color:var(--text);}
+
+  main{max-width:1100px;margin:0 auto;padding:24px 20px 60px;}
+  .panel{display:none;}
+  .panel.active{display:block;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-bottom:16px;}
+  .card h2{font-family:'Space Grotesk',sans-serif;font-size:15px;margin:0 0 14px;display:flex;align-items:center;gap:8px;}
+  .card h2 .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--amber);border:1px solid var(--line);border-radius:5px;padding:2px 6px;}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+  label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px;}
+  select,input,button{font-family:'Inter',sans-serif;font-size:13px;background:var(--panel-2);border:1px solid var(--line);color:var(--text);border-radius:7px;padding:9px 11px;}
+  input::placeholder{color:var(--muted);}
+  button{cursor:pointer;background:var(--amber);color:#0b1220;font-weight:600;border:none;transition:opacity .15s;}
+  button:hover{opacity:.88;}
+  button.ghost{background:transparent;border:1px solid var(--line);color:var(--text);}
+  button.danger{background:var(--red);color:white;}
+  button:disabled{opacity:.5;cursor:not-allowed;}
+
+  .status-msg{font-size:12.5px;padding:9px 11px;border-radius:7px;margin-top:10px;display:none;}
+  .status-msg.show{display:block;}
+  .status-msg.ok{background:rgba(61,220,151,.12);color:var(--green);border:1px solid rgba(61,220,151,.3);}
+  .status-msg.err{background:rgba(229,72,77,.12);color:var(--red);border:1px solid rgba(229,72,77,.3);}
+  .status-msg.info{background:rgba(79,142,247,.12);color:var(--blue);border:1px solid rgba(79,142,247,.3);}
+
+  .ledger-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);}
+  table.ledger{border-collapse:collapse;width:100%;font-family:'IBM Plex Mono',monospace;font-size:12px;}
+  table.ledger th,table.ledger td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:8px 10px;text-align:center;white-space:nowrap;}
+  table.ledger th{background:var(--panel-2);color:var(--muted);font-weight:600;position:sticky;top:0;}
+  table.ledger td.name-col, table.ledger th.name-col{position:sticky;left:0;background:var(--panel);text-align:left;font-family:'Inter',sans-serif;font-weight:500;min-width:170px;z-index:2;}
+  table.ledger th.name-col{background:var(--panel-2);z-index:3;}
+  .badge{display:inline-block;min-width:26px;padding:2px 5px;border-radius:5px;font-weight:600;}
+  .b-1{background:rgba(79,142,247,.18);color:var(--blue);}
+  .b-2{background:rgba(61,220,151,.18);color:var(--green);}
+  .b-3{background:rgba(242,201,76,.18);color:var(--yellow);}
+  .b-off{background:rgba(229,72,77,.18);color:var(--red);}
+  .b-libur{outline:1px dashed var(--red);}
+
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:12px;color:var(--muted);}
+  .legend span{display:flex;align-items:center;gap:6px;}
+  .legend i{width:10px;height:10px;border-radius:3px;display:inline-block;}
+
+  .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px;}
+  .metric{background:var(--panel-2);border:1px solid var(--line);border-radius:var(--radius);padding:14px;}
+  .metric .num{font-family:'Space Grotesk',sans-serif;font-size:26px;color:var(--amber);}
+  .metric .lbl{font-size:11.5px;color:var(--muted);margin-top:2px;}
+  .bar-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:12px;}
+  .bar-row .lbl{width:70px;color:var(--muted);flex-shrink:0;}
+  .bar-track{flex:1;height:14px;background:var(--panel-2);border-radius:20px;overflow:hidden;}
+  .bar-fill{height:100%;border-radius:20px;}
+  .holiday-list{list-style:none;margin:0;padding:0;font-size:13px;}
+  .holiday-list li{padding:7px 0;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;}
+  .holiday-list li:last-child{border-bottom:none;}
+  .holiday-list .d{font-family:'IBM Plex Mono',monospace;color:var(--amber);}
+
+  .emp-list{list-style:none;margin:0;padding:0;}
+  .emp-list li{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px;}
+  .emp-list li:last-child{border-bottom:none;}
+  .emp-list .tag{font-size:11px;color:var(--muted);font-family:'IBM Plex Mono',monospace;}
+
+  .gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-top:14px;}
+  .gallery figure{margin:0;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;overflow:hidden;}
+  .gallery img{width:100%;height:120px;object-fit:cover;display:block;}
+  .gallery figcaption{padding:7px 8px;font-size:11px;color:var(--muted);}
+  .gallery figcaption b{color:var(--text);display:block;font-size:12px;}
+
+  footer{text-align:center;padding:20px;color:var(--muted);font-size:11.5px;}
+
+  @media (prefers-reduced-motion:no-preference){ .panel.active{animation:fade .25s ease;} }
+  @keyframes fade{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
+</style>
+</head>
+<body>
+
+<div class="board-header">
+  <div class="board-top">
+    <div class="brand">
+      <div class="mark"></div>
+      <div>
+        <h1>Shift Board — Team A</h1>
+        <p>Jadwal kerja &amp; absensi tim, sinkron langsung dari server</p>
+      </div>
+    </div>
+    <div class="clock">
+      <div class="time" id="clockTime">--:--:--</div>
+      <div class="date" id="clockDate">-</div>
+    </div>
+  </div>
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="jadwal">📅 Jadwal Shift</button>
+    <button class="tab-btn" data-tab="dashboard">📊 Dashboard</button>
+    <button class="tab-btn" data-tab="admin">⚙️ Admin</button>
+    <button class="tab-btn" data-tab="absensi">📷 Absensi</button>
+  </div>
+</div>
+
+<main>
+
+  <section class="panel active" id="panel-jadwal">
+    <div class="card">
+      <h2><span class="eyebrow">01</span> Pilih periode</h2>
+      <div class="row">
+        <div>
+          <label for="selBulan">Bulan</label>
+          <select id="selBulan"></select>
+        </div>
+        <div>
+          <label for="selTahun">Tahun</label>
+          <input id="selTahun" type="number" min="2024" max="2035" style="width:90px">
+        </div>
+        <div style="align-self:flex-end;">
+          <button id="btnMuatJadwal">Muat jadwal</button>
+        </div>
+      </div>
+      <div class="status-msg" id="msgJadwal"></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="eyebrow">02</span> Ledger shift</h2>
+      <div class="ledger-wrap">
+        <table class="ledger" id="tableJadwal"></table>
+      </div>
+      <div class="legend">
+        <span><i style="background:var(--blue)"></i> Shift 1</span>
+        <span><i style="background:var(--green)"></i> Shift 2</span>
+        <span><i style="background:var(--yellow)"></i> Shift 3</span>
+        <span><i style="background:var(--red)"></i> OFF</span>
+        <span><i style="background:transparent;border:1px dashed var(--red)"></i> Libur nasional</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-dashboard">
+    <div class="card">
+      <h2><span class="eyebrow">◆</span> Ringkasan bulan ini</h2>
+      <div class="metrics">
+        <div class="metric"><div class="num" id="mTotalKaryawan">–</div><div class="lbl">Total karyawan</div></div>
+        <div class="metric"><div class="num" id="mTotalKerja">–</div><div class="lbl">Total hari kerja</div></div>
+        <div class="metric"><div class="num" id="mTotalOff">–</div><div class="lbl">Total OFF</div></div>
+      </div>
+      <div class="bar-row">
+        <div class="lbl">Kerja</div>
+        <div class="bar-track"><div class="bar-fill" id="barKerja" style="background:var(--green);width:0%"></div></div>
+      </div>
+      <div class="bar-row">
+        <div class="lbl">OFF</div>
+        <div class="bar-track"><div class="bar-fill" id="barOff" style="background:var(--red);width:0%"></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="eyebrow">🇮🇩</span> Libur nasional bulan ini</h2>
+      <ul class="holiday-list" id="listLibur"><li>Muat jadwal dulu di tab Jadwal Shift.</li></ul>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-admin">
+    <div class="card" id="cardLogin">
+      <h2><span class="eyebrow">🔒</span> Login admin</h2>
+      <div class="row">
+        <div>
+          <label for="adminEmail">Email</label>
+          <input id="adminEmail" type="email" placeholder="admin@shiftapp.com">
+        </div>
+        <div>
+          <label for="adminPass">Password</label>
+          <input id="adminPass" type="password" placeholder="••••••••">
+        </div>
+        <div style="align-self:flex-end;">
+          <button id="btnLogin">Login</button>
+        </div>
+      </div>
+      <div class="status-msg" id="msgLogin"></div>
+    </div>
+
+    <div class="card" id="cardAdminPanel" style="display:none;">
+      <h2><span class="eyebrow">✓</span> Masuk sebagai admin <button class="ghost" id="btnLogout" style="margin-left:auto;padding:5px 10px;font-size:12px;">Logout</button></h2>
+
+      <h2 style="margin-top:20px;">Tambah karyawan</h2>
+      <div class="row">
+        <div>
+          <label for="newNama">Nama</label>
+          <input id="newNama" placeholder="Nama lengkap">
+        </div>
+        <div>
+          <label for="newTitle">Title</label>
+          <input id="newTitle" placeholder="cth: NEK">
+        </div>
+        <div style="align-self:flex-end;">
+          <button id="btnTambah">Tambah</button>
+        </div>
+      </div>
+      <div class="status-msg" id="msgAdmin"></div>
+
+      <h2 style="margin-top:20px;">Daftar karyawan</h2>
+      <ul class="emp-list" id="listKaryawanAdmin"><li>Memuat…</li></ul>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-absensi">
+    <div class="card">
+      <h2><span class="eyebrow">📷</span> Absen sekarang</h2>
+      <div class="row">
+        <div>
+          <label for="absNama">Pilih nama</label>
+          <select id="absNama"></select>
+        </div>
+        <div>
+          <label for="absFoto">Ambil / pilih foto</label>
+          <input id="absFoto" type="file" accept="image/*" capture="user">
+        </div>
+        <div style="align-self:flex-end;">
+          <button id="btnAbsen">Kirim absensi</button>
+        </div>
+      </div>
+      <div class="status-msg" id="msgAbsen"></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="eyebrow">🗂</span> Riwayat absensi</h2>
+      <div class="gallery" id="galleryAbsen"><p style="color:var(--muted);font-size:13px;">Memuat…</p></div>
+    </div>
+  </section>
+
+</main>
+
+<footer>Shift Board — Team A · data tersinkron ke server, bukan cuma browser ini</footer>
+
+<script>
+const API_BASE = "https://myapp-work-dasbord-v2.onrender.com";
+
+const POLA_SHIFT = ["OFF","2","2","2","OFF","1","1","1","OFF","3","3","3"];
+const TANGGAL_AWAL_GLOBAL = new Date(2026, 2, 1);
+
+let adminToken = null;
+let karyawanCache = [];
+let jadwalCache = null;
+
+function showMsg(el, text, type){ el.textContent = text; el.className = "status-msg show " + type; }
+function hideMsg(el){ el.className = "status-msg"; }
+
+async function api(path, opts={}){
+  const headers = Object.assign({}, opts.headers || {});
+  if (adminToken) headers["Authorization"] = "Bearer " + adminToken;
+  const res = await fetch(API_BASE + path, Object.assign({}, opts, { headers }));
+  let body = null;
+  try { body = await res.json(); } catch(e) {}
+  if (!res.ok) {
+    const err = new Error((body && body.error) || ("HTTP " + res.status));
+    err.status = res.status;
+    throw err;
+  }
+  return body;
+}
+
+function tickClock(){
+  const now = new Date();
+  document.getElementById("clockTime").textContent = now.toLocaleTimeString('id-ID');
+  document.getElementById("clockDate").textContent = now.toLocaleDateString('id-ID', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+}
+setInterval(tickClock, 1000); tickClock();
+
+document.querySelectorAll(".tab-btn").forEach(btn=>{
+  btn.addEventListener("click", ()=>{
+    document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active"));
+    document.querySelectorAll(".panel").forEach(p=>p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("panel-" + btn.dataset.tab).classList.add("active");
+    if (btn.dataset.tab === "absensi") loadAbsensiGallery();
+    if (btn.dataset.tab === "admin" && adminToken) loadKaryawanAdminList();
+  });
+});
+
+const NAMA_BULAN = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+(function initBulanTahun(){
+  const selBulan = document.getElementById("selBulan");
+  NAMA_BULAN.forEach((n,i)=>{
+    const opt = document.createElement("option");
+    opt.value = i+1; opt.textContent = n;
+    selBulan.appendChild(opt);
+  });
+  const now = new Date();
+  selBulan.value = now.getMonth()+1;
+  document.getElementById("selTahun").value = now.getFullYear();
+})();
+
+async function loadKaryawan(){
+  karyawanCache = await api("/karyawan");
+  return karyawanCache;
+}
+
+async function loadLiburTahun(tahun){
+  try {
+    const res = await fetch(`https://date.nager.at/api/v3/PublicHolidays/${tahun}/ID`);
+    if (!res.ok) return [];
+    return await res.json();
+  } catch(e) { return []; }
+}
+
+function generateJadwal(tahun, bulan, karyawan, liburList){
+  const jumlahHari = new Date(tahun, bulan, 0).getDate();
+  const liburMap = {};
+  liburList.forEach(h=>{ liburMap[h.date] = h.localName; });
+
+  const rows = karyawan.map(k=>{
+    const row = { no:k.no, nama:k.nama, title:k.title, shifts:[] };
+    for (let i=1; i<=jumlahHari; i++){
+      const tgl = new Date(tahun, bulan-1, i);
+      const selisih = Math.round((tgl - TANGGAL_AWAL_GLOBAL) / 86400000);
+      const posisi = ((selisih % 12) + 12) % 12;
+      let shift = POLA_SHIFT[posisi];
+      const iso = tgl.toISOString().slice(0,10);
+      const isLibur = !!liburMap[iso];
+      row.shifts.push({ shift, isLibur, liburNama: liburMap[iso] || null });
+    }
+    return row;
+  });
+
+  const liburBulanIni = liburList.filter(h=>{
+    const d = new Date(h.date);
+    return d.getFullYear()===tahun && (d.getMonth()+1)===bulan;
+  });
+
+  return { tahun, bulan, jumlahHari, rows, liburBulanIni };
+}
+
+function badgeClass(shift){
+  if (shift==="OFF") return "b-off";
+  if (shift==="1") return "b-1";
+  if (shift==="2") return "b-2";
+  if (shift==="3") return "b-3";
+  return "";
+}
+
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+function renderJadwalTable(data){
+  const table = document.getElementById("tableJadwal");
+  let html = "<thead><tr><th class='name-col'>Nama</th>";
+  for (let i=1;i<=data.jumlahHari;i++) html += `<th>${i}</th>`;
+  html += "</tr></thead><tbody>";
+  data.rows.forEach(r=>{
+    html += `<tr><td class="name-col">${escapeHtml(r.nama)}<div style="font-size:10px;color:var(--muted)">${escapeHtml(r.title||"")}</div></td>`;
+    r.shifts.forEach(s=>{
+      const cls = badgeClass(s.shift) + (s.isLibur ? " b-libur" : "");
+      const title = s.isLibur ? ` title="${escapeHtml(s.liburNama)}"` : "";
+      html += `<td${title}><span class="badge ${cls}">${s.shift}</span></td>`;
+    });
+    html += "</tr>";
+  });
+  html += "</tbody>";
+  table.innerHTML = html;
+}
+
+function renderLiburList(liburBulanIni){
+  const list = document.getElementById("listLibur");
+  if (!liburBulanIni.length){ list.innerHTML = "<li>Tidak ada hari libur nasional bulan ini.</li>"; return; }
+  list.innerHTML = liburBulanIni.map(h=>{
+    const d = new Date(h.date);
+    return `<li><span>${escapeHtml(h.localName)}</span><span class="d">${d.toLocaleDateString('id-ID',{day:'2-digit',month:'2-digit',year:'numeric'})}</span></li>`;
+  }).join("");
+}
+
+function renderDashboard(data){
+  const totalKaryawan = data.rows.length;
+  let totalOff = 0, totalKerja = 0;
+  data.rows.forEach(r=>{
+    r.shifts.forEach(s=>{ if (s.shift === "OFF") totalOff++; else totalKerja++; });
+  });
+  document.getElementById("mTotalKaryawan").textContent = totalKaryawan;
+  document.getElementById("mTotalKerja").textContent = totalKerja;
+  document.getElementById("mTotalOff").textContent = totalOff;
+  const total = totalKerja + totalOff || 1;
+  document.getElementById("barKerja").style.width = (totalKerja/total*100).toFixed(1) + "%";
+  document.getElementById("barOff").style.width = (totalOff/total*100).toFixed(1) + "%";
+  renderLiburList(data.liburBulanIni);
+}
+
+async function muatJadwal(){
+  const msg = document.getElementById("msgJadwal");
+  showMsg(msg, "Memuat data karyawan & jadwal…", "info");
+  try{
+    const tahun = parseInt(document.getElementById("selTahun").value, 10);
+    const bulan = parseInt(document.getElementById("selBulan").value, 10);
+    const [karyawan, libur] = await Promise.all([ loadKaryawan(), loadLiburTahun(tahun) ]);
+    if (!karyawan.length){
+      showMsg(msg, "Belum ada data karyawan. Tambahkan lewat tab Admin dulu.", "err");
+      document.getElementById("tableJadwal").innerHTML = "";
+      return;
+    }
+    jadwalCache = generateJadwal(tahun, bulan, karyawan, libur);
+    renderJadwalTable(jadwalCache);
+    renderDashboard(jadwalCache);
+    hideMsg(msg);
+    populateAbsenNama(karyawan);
+  }catch(e){
+    showMsg(msg, "Gagal memuat: " + e.message + " — cek apakah backend online.", "err");
+  }
+}
+document.getElementById("btnMuatJadwal").addEventListener("click", muatJadwal);
+
+document.getElementById("btnLogin").addEventListener("click", async ()=>{
+  const msg = document.getElementById("msgLogin");
+  const email = document.getElementById("adminEmail").value.trim();
+  const password = document.getElementById("adminPass").value;
+  if (!email || !password){ showMsg(msg,"Isi email dan password.","err"); return; }
+  showMsg(msg, "Memeriksa…", "info");
+  try{
+    const res = await api("/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password })
+    });
+    adminToken = res.token;
+    hideMsg(msg);
+    document.getElementById("cardLogin").style.display = "none";
+    document.getElementById("cardAdminPanel").style.display = "block";
+    loadKaryawanAdminList();
+  }catch(e){
+    showMsg(msg, "Login gagal: " + e.message, "err");
+  }
+});
+
+document.getElementById("btnLogout").addEventListener("click", ()=>{
+  adminToken = null;
+  document.getElementById("cardLogin").style.display = "block";
+  document.getElementById("cardAdminPanel").style.display = "none";
+  document.getElementById("adminPass").value = "";
+});
+
+async function loadKaryawanAdminList(){
+  const list = document.getElementById("listKaryawanAdmin");
+  list.innerHTML = "<li>Memuat…</li>";
+  try{
+    const karyawan = await loadKaryawan();
+    if (!karyawan.length){ list.innerHTML = "<li>Belum ada karyawan.</li>"; return; }
+    list.innerHTML = karyawan.map(k=>`
+      <li>
+        <span>${escapeHtml(k.nama)} <span class="tag">${escapeHtml(k.title||"")}</span></span>
+        <button class="danger" data-no="${k.no}" style="padding:5px 10px;font-size:12px;">Hapus</button>
+      </li>`).join("");
+    list.querySelectorAll("button[data-no]").forEach(btn=>{
+      btn.addEventListener("click", ()=>hapusKaryawan(btn.dataset.no));
+    });
+  }catch(e){
+    list.innerHTML = `<li>Gagal memuat: ${escapeHtml(e.message)}</li>`;
+  }
+}
+
+document.getElementById("btnTambah").addEventListener("click", async ()=>{
+  const msg = document.getElementById("msgAdmin");
+  const nama = document.getElementById("newNama").value.trim();
+  const title = document.getElementById("newTitle").value.trim();
+  if (!nama){ showMsg(msg,"Nama wajib diisi.","err"); return; }
+  showMsg(msg, "Menyimpan…", "info");
+  try{
+    await api("/karyawan", {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ nama, title })
+    });
+    showMsg(msg, "Karyawan ditambahkan.", "ok");
+    document.getElementById("newNama").value = "";
+    document.getElementById("newTitle").value = "";
+    loadKaryawanAdminList();
+  }catch(e){
+    showMsg(msg, "Gagal menambah: " + e.message, "err");
+  }
+});
+
+async function hapusKaryawan(no){
+  if (!confirm("Hapus karyawan ini?")) return;
+  try{
+    await api("/karyawan/" + no, { method:"DELETE" });
+    loadKaryawanAdminList();
+  }catch(e){
+    alert("Gagal menghapus: " + e.message);
+  }
+}
+
+function populateAbsenNama(karyawan){
+  const sel = document.getElementById("absNama");
+  sel.innerHTML = karyawan.map(k=>`<option value="${escapeHtml(k.nama)}">${escapeHtml(k.nama)}</option>`).join("");
+}
+
+document.getElementById("btnAbsen").addEventListener("click", async ()=>{
+  const msg = document.getElementById("msgAbsen");
+  const nama = document.getElementById("absNama").value;
+  const fileInput = document.getElementById("absFoto");
+  if (!nama){ showMsg(msg,"Pilih nama dulu (muat jadwal dulu di tab Jadwal Shift kalau daftar kosong).","err"); return; }
+  if (!fileInput.files.length){ showMsg(msg,"Ambil / pilih foto dulu.","err"); return; }
+  showMsg(msg, "Mengirim…", "info");
+  try{
+    const fd = new FormData();
+    fd.append("nama", nama);
+    fd.append("foto", fileInput.files[0]);
+    await api("/absensi", { method:"POST", body: fd });
+    showMsg(msg, "Absensi berhasil dikirim.", "ok");
+    fileInput.value = "";
+    loadAbsensiGallery();
+  }catch(e){
+    showMsg(msg, "Gagal mengirim: " + e.message, "err");
+  }
+});
+
+async function loadAbsensiGallery(){
+  const gal = document.getElementById("galleryAbsen");
+  gal.innerHTML = "<p style='color:var(--muted);font-size:13px;'>Memuat…</p>";
+  try{
+    const data = await api("/absensi");
+    if (!data.length){ gal.innerHTML = "<p style='color:var(--muted);font-size:13px;'>Belum ada absensi.</p>"; return; }
+    gal.innerHTML = data.map(a=>{
+      const waktu = new Date(a.waktu).toLocaleString('id-ID');
+      return `<figure>
+        <img src="${API_BASE}${a.foto_url}" alt="Foto absensi ${escapeHtml(a.nama)}" loading="lazy">
+        <figcaption><b>${escapeHtml(a.nama)}</b>${waktu}</figcaption>
+      </figure>`;
+    }).join("");
+  }catch(e){
+    gal.innerHTML = `<p style='color:var(--red);font-size:13px;'>Gagal memuat: ${escapeHtml(e.message)}</p>`;
+  }
+}
+
+muatJadwal();
+</script>
+</body>
+</html>
