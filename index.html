@@ -114,11 +114,11 @@
   .kiosk-frame{position:relative;max-width:360px;margin:0 auto;border-radius:16px;overflow:hidden;background:#000;aspect-ratio:3/4;}
   .kiosk-frame video, .kiosk-frame img{width:100%;height:100%;object-fit:cover;display:block;}
   .kiosk-overlay{position:absolute;inset:0;pointer-events:none;}
-  .kiosk-corner{position:absolute;width:26px;height:26px;border:3px solid var(--amber);}
-  .kiosk-corner.tl{top:14px;left:14px;border-right:none;border-bottom:none;border-radius:6px 0 0 0;}
-  .kiosk-corner.tr{top:14px;right:14px;border-left:none;border-bottom:none;border-radius:0 6px 0 0;}
-  .kiosk-corner.bl{bottom:14px;left:14px;border-right:none;border-top:none;border-radius:0 0 0 6px;}
-  .kiosk-corner.br{bottom:14px;right:14px;border-left:none;border-top:none;border-radius:0 0 6px 0;}
+  .kiosk-guide{position:absolute;top:44%;left:50%;width:66%;aspect-ratio:1/1;transform:translate(-50%,-50%);border-radius:50%;border:3px solid var(--amber);box-shadow:0 0 0 9999px rgba(0,0,0,.55);transition:border-color .2s;}
+  .kiosk-guide.ok{border-color:var(--green);}
+  .kiosk-guide.bad{border-color:var(--red);}
+  .kiosk-instruksi-atas{position:absolute;top:12px;left:0;right:0;text-align:center;color:#fff;font-size:12.5px;font-family:'Space Grotesk',sans-serif;font-weight:600;text-shadow:0 1px 4px rgba(0,0,0,.9);padding:0 10px;}
+  .kiosk-instruksi-bawah{position:absolute;bottom:60px;left:0;right:0;text-align:center;color:#fff;font-size:12px;text-shadow:0 1px 4px rgba(0,0,0,.9);padding:0 20px;}
   .kiosk-info{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(180deg,transparent,rgba(0,0,0,.75));padding:14px 12px 10px;display:flex;justify-content:space-between;align-items:center;}
   .kiosk-nama{font-family:'Space Grotesk',sans-serif;color:#fff;font-size:14px;font-weight:700;}
   .kiosk-jam{font-family:'IBM Plex Mono',monospace;color:var(--amber);font-size:13px;}
@@ -278,8 +278,9 @@
         <canvas id="kioskCanvas" style="display:none;"></canvas>
         <img id="kioskHasil" alt="Hasil jepretan" style="display:none;">
         <div class="kiosk-overlay">
-          <div class="kiosk-corner tl"></div><div class="kiosk-corner tr"></div>
-          <div class="kiosk-corner bl"></div><div class="kiosk-corner br"></div>
+          <div class="kiosk-instruksi-atas">📱 Pegang HP Anda dengan tegak</div>
+          <div class="kiosk-guide" id="kioskGuide"></div>
+          <div class="kiosk-instruksi-bawah" id="kioskInstruksiBawah">Posisikan wajah Anda di dalam lingkaran</div>
         </div>
         <div class="kiosk-info">
           <div class="kiosk-nama" id="kioskNamaTampil">-</div>
@@ -362,6 +363,14 @@ async function bukaKiosk(tipe){
   }
 }
 
+function setWarnaGuide(status){
+  const guide = document.getElementById("kioskGuide");
+  if (!guide) return;
+  guide.classList.remove("ok", "bad");
+  if (status === "ok") guide.classList.add("ok");
+  if (status === "bad") guide.classList.add("bad");
+}
+
 function resetKioskUI(){
   kioskBlob = null;
   fotoAdaWajah = false;
@@ -372,6 +381,8 @@ function resetKioskUI(){
   document.getElementById("btnUlangFoto").style.display = "none";
   document.getElementById("btnKirimAbsen").style.display = "none";
   document.getElementById("btnKirimAbsen").disabled = true;
+  document.getElementById("kioskInstruksiBawah").textContent = "Posisikan wajah Anda di dalam lingkaran";
+  setWarnaGuide(null);
   hideMsg(document.getElementById("msgWajah"));
   hideMsg(document.getElementById("msgAbsen"));
 }
@@ -435,6 +446,8 @@ async function cekWajahKiosk(imgEl){
 
     if (!hasil){
       fotoAdaWajah = false;
+      setWarnaGuide("bad");
+      document.getElementById("kioskInstruksiBawah").textContent = "Wajah tidak terdeteksi, coba lagi";
       showMsg(msgWajah, "❌ Wajah tidak terdeteksi. Tap 'Ulangi' dan coba lagi.", "err");
       return;
     }
@@ -446,6 +459,8 @@ async function cekWajahKiosk(imgEl){
     const karyawan = karyawanCache.find(k => k.nama === namaTerpilih);
 
     if (!karyawan || !karyawan.faceDescriptor){
+      setWarnaGuide("ok");
+      document.getElementById("kioskInstruksiBawah").textContent = "Wajah terdeteksi";
       showMsg(msgWajah, "✅ Wajah terdeteksi. (Wajah untuk nama ini belum didaftarkan admin, absensi diterima tanpa verifikasi identitas.)", "info");
       btnKirim.disabled = false;
       return;
@@ -453,9 +468,13 @@ async function cekWajahKiosk(imgEl){
 
     const jarak = faceapi.euclideanDistance(descriptorFotoAbsen, karyawan.faceDescriptor);
     if (jarak < THRESHOLD_WAJAH){
+      setWarnaGuide("ok");
+      document.getElementById("kioskInstruksiBawah").textContent = "Wajah cocok, siap dikirim";
       showMsg(msgWajah, "✅ Wajah cocok dengan " + namaTerpilih + ".", "ok");
       btnKirim.disabled = false;
     }else{
+      setWarnaGuide("bad");
+      document.getElementById("kioskInstruksiBawah").textContent = "Wajah tidak cocok";
       showMsg(msgWajah, "❌ Wajah tidak cocok dengan " + namaTerpilih + ". Tap 'Ulangi'.", "err");
       btnKirim.disabled = true;
     }
