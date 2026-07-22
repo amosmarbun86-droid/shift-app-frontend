@@ -252,10 +252,12 @@
           <input id="absFoto" type="file" accept="image/*" capture="user">
         </div>
         <div style="align-self:flex-end;">
-          <button id="btnAbsen">Kirim absensi</button>
+          <button id="btnAbsen" disabled>Kirim absensi</button>
         </div>
       </div>
       <div class="status-msg" id="msgAbsen"></div>
+      <div class="status-msg" id="msgWajah"></div>
+      <img id="previewFoto" alt="Preview foto absensi" style="display:none;max-width:220px;border-radius:8px;margin-top:10px;border:1px solid var(--line);">
     </div>
 
     <div class="card">
@@ -268,8 +270,111 @@
 
 <footer>Shift Board — Team A · data tersinkron ke server, bukan cuma browser ini</footer>
 
+<script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 <script>
 const API_BASE = "https://myapp-work-dasbord-v2.onrender.com";
+
+/* ============== DETEKSI WAJAH (face-api.js, jalan di browser, gratis) ============== */
+const FACE_MODEL_URL = "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights";
+let faceModelReady = false;
+let fotoAdaWajah = false;
+
+async function siapkanModelWajah(){
+  if (faceModelReady || typeof faceapi === "undefined") return;
+  try{
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(FACE_MODEL_URL),
+      faceapi.nets.faceLandmark68Net.loadFromUri(FACE_MODEL_URL),
+      faceapi.nets.faceRecognitionNet.loadFromUri(FACE_MODEL_URL),
+    ]);
+    faceModelReady = true;
+  }catch(e){
+    console.warn("Gagal memuat model deteksi wajah:", e);
+  }
+}
+
+let descriptorFotoAbsen = null;
+const THRESHOLD_WAJAH = 0.55;
+
+async function cekWajahDiFoto(file){
+  const msgWajah = document.getElementById("msgWajah");
+  const preview = document.getElementById("previewFoto");
+  const btnAbsen = document.getElementById("btnAbsen");
+
+  fotoAdaWajah = false;
+  descriptorFotoAbsen = null;
+  btnAbsen.disabled = true;
+
+  const url = URL.createObjectURL(file);
+  preview.src = url;
+  preview.style.display = "block";
+
+  showMsg(msgWajah, "Memeriksa apakah ada wajah di foto…", "info");
+
+  await new Promise(resolve => { preview.onload = resolve; });
+  await siapkanModelWajah();
+
+  if (!faceModelReady){
+    showMsg(msgWajah, "Model deteksi wajah gagal dimuat (cek koneksi internet). Foto tetap bisa dikirim tanpa verifikasi wajah.", "err");
+    fotoAdaWajah = true; // fallback: jangan blokir user kalau modelnya gagal load
+    btnAbsen.disabled = false;
+    return;
+  }
+
+  try{
+    const hasil = await faceapi.detectSingleFace(preview, new faceapi.TinyFaceDetectorOptions())
+      .withFaceLandmarks().withFaceDescriptor();
+
+    if (!hasil){
+      fotoAdaWajah = false;
+      showMsg(msgWajah, "❌ Wajah tidak terdeteksi di foto ini. Coba ambil foto ulang dengan wajah terlihat jelas.", "err");
+      btnAbsen.disabled = true;
+      return;
+    }
+
+    fotoAdaWajah = true;
+    descriptorFotoAbsen = Array.from(hasil.descriptor);
+    cekKecocokanWajah();
+  }catch(e){
+    console.warn("Gagal deteksi wajah:", e);
+    fotoAdaWajah = true; // fallback: jangan blokir kalau proses deteksi error
+    showMsg(msgWajah, "Gagal memeriksa wajah, tapi foto tetap bisa dikirim.", "info");
+    btnAbsen.disabled = false;
+  }
+}
+
+function cekKecocokanWajah(){
+  const msgWajah = document.getElementById("msgWajah");
+  const btnAbsen = document.getElementById("btnAbsen");
+  const namaTerpilih = document.getElementById("absNama").value;
+
+  if (!fotoAdaWajah || !descriptorFotoAbsen){
+    return; // belum ada foto valid, biarkan status sebelumnya
+  }
+
+  const karyawan = karyawanCache.find(k => k.nama === namaTerpilih);
+  if (!karyawan || !karyawan.faceDescriptor){
+    showMsg(msgWajah, "✅ Wajah terdeteksi. (Wajah untuk nama ini belum didaftarkan admin, absensi diterima tanpa verifikasi identitas.)", "info");
+    btnAbsen.disabled = false;
+    return;
+  }
+
+  const jarak = faceapi.euclideanDistance(descriptorFotoAbsen, karyawan.faceDescriptor);
+  if (jarak < THRESHOLD_WAJAH){
+    showMsg(msgWajah, "✅ Wajah cocok dengan " + namaTerpilih + ". Siap dikirim.", "ok");
+    btnAbsen.disabled = false;
+  }else{
+    showMsg(msgWajah, "❌ Wajah tidak cocok dengan " + namaTerpilih + ". Pastikan pilih nama yang benar, atau ambil ulang foto.", "err");
+    btnAbsen.disabled = true;
+  }
+}
+
+document.getElementById("absNama").addEventListener("change", cekKecocokanWajah);
+
+document.getElementById("absFoto").addEventListener("change", (e)=>{
+  const file = e.target.files[0];
+  if (file) cekWajahDiFoto(file);
+});
 
 const POLA_SHIFT = ["OFF","2","2","2","OFF","1","1","1","OFF","3","3","3"];
 const TANGGAL_AWAL_GLOBAL = new Date(2026, 2, 1);
@@ -480,11 +585,17 @@ async function loadKaryawanAdminList(){
     if (!karyawan.length){ list.innerHTML = "<li>Belum ada karyawan.</li>"; return; }
     list.innerHTML = karyawan.map(k=>`
       <li>
-        <span>${escapeHtml(k.nama)} <span class="tag">${escapeHtml(k.title||"")}</span></span>
-        <button class="danger" data-no="${k.no}" style="padding:5px 10px;font-size:12px;">Hapus</button>
+        <span>${escapeHtml(k.nama)} <span class="tag">${escapeHtml(k.title||"")}</span> ${k.faceDescriptor ? '<span class="tag" style="color:var(--green)">✓ wajah terdaftar</span>' : '<span class="tag" style="color:var(--muted)">belum ada wajah</span>'}</span>
+        <span style="display:flex;gap:6px;">
+          <button class="ghost" data-daftar-wajah="${k.no}" style="padding:5px 10px;font-size:12px;">Daftarkan wajah</button>
+          <button class="danger" data-no="${k.no}" style="padding:5px 10px;font-size:12px;">Hapus</button>
+        </span>
       </li>`).join("");
     list.querySelectorAll("button[data-no]").forEach(btn=>{
       btn.addEventListener("click", ()=>hapusKaryawan(btn.dataset.no));
+    });
+    list.querySelectorAll("button[data-daftar-wajah]").forEach(btn=>{
+      btn.addEventListener("click", ()=>bukaInputWajah(btn.dataset.daftarWajah));
     });
   }catch(e){
     list.innerHTML = `<li>Gagal memuat: ${escapeHtml(e.message)}</li>`;
@@ -522,6 +633,56 @@ async function hapusKaryawan(no){
   }
 }
 
+function bukaInputWajah(no){
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+  input.capture = "user";
+  input.onchange = async (e)=>{
+    const file = e.target.files[0];
+    if (!file) return;
+    await daftarkanWajah(no, file);
+  };
+  input.click();
+}
+
+async function daftarkanWajah(no, file){
+  const msg = document.getElementById("msgAdmin");
+  showMsg(msg, "Memproses foto wajah…", "info");
+
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  img.src = url;
+  await new Promise(resolve => { img.onload = resolve; });
+
+  await siapkanModelWajah();
+  if (!faceModelReady){
+    showMsg(msg, "Model deteksi wajah gagal dimuat. Cek koneksi internet lalu coba lagi.", "err");
+    return;
+  }
+
+  try{
+    const hasil = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
+      .withFaceLandmarks().withFaceDescriptor();
+
+    if (!hasil){
+      showMsg(msg, "Wajah tidak terdeteksi di foto ini. Coba pakai foto lain yang lebih jelas.", "err");
+      return;
+    }
+
+    await api("/karyawan/" + no + "/wajah", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ descriptor: Array.from(hasil.descriptor) })
+    });
+
+    showMsg(msg, "Wajah berhasil didaftarkan.", "ok");
+    loadKaryawanAdminList();
+  }catch(e){
+    showMsg(msg, "Gagal mendaftarkan wajah: " + e.message, "err");
+  }
+}
+
 function populateAbsenNama(karyawan){
   const sel = document.getElementById("absNama");
   sel.innerHTML = karyawan.map(k=>`<option value="${escapeHtml(k.nama)}">${escapeHtml(k.nama)}</option>`).join("");
@@ -533,6 +694,7 @@ document.getElementById("btnAbsen").addEventListener("click", async ()=>{
   const fileInput = document.getElementById("absFoto");
   if (!nama){ showMsg(msg,"Pilih nama dulu (muat jadwal dulu di tab Jadwal Shift kalau daftar kosong).","err"); return; }
   if (!fileInput.files.length){ showMsg(msg,"Ambil / pilih foto dulu.","err"); return; }
+  if (!fotoAdaWajah){ showMsg(msg,"Foto belum lolos pemeriksaan wajah. Ambil ulang foto dengan wajah terlihat jelas.","err"); return; }
   showMsg(msg, "Mengirim…", "info");
   try{
     const fd = new FormData();
@@ -541,6 +703,10 @@ document.getElementById("btnAbsen").addEventListener("click", async ()=>{
     await api("/absensi", { method:"POST", body: fd });
     showMsg(msg, "Absensi berhasil dikirim.", "ok");
     fileInput.value = "";
+    fotoAdaWajah = false;
+    document.getElementById("btnAbsen").disabled = true;
+    document.getElementById("previewFoto").style.display = "none";
+    hideMsg(document.getElementById("msgWajah"));
     loadAbsensiGallery();
   }catch(e){
     showMsg(msg, "Gagal mengirim: " + e.message, "err");
