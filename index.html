@@ -106,6 +106,23 @@
   .gallery figcaption{padding:7px 8px;font-size:11px;color:var(--muted);}
   .gallery figcaption b{color:var(--text);display:block;font-size:12px;}
 
+  .kiosk-actions{display:flex;gap:12px;margin-top:14px;flex-wrap:wrap;}
+  .kiosk-btn{flex:1;min-width:150px;padding:16px;font-size:15px;font-family:'Space Grotesk',sans-serif;border-radius:10px;border:none;cursor:pointer;font-weight:700;}
+  .kiosk-btn.masuk{background:var(--green);color:#0b1220;}
+  .kiosk-btn.keluar{background:var(--red);color:white;}
+  .kiosk-btn:hover{opacity:.88;}
+  .kiosk-frame{position:relative;max-width:360px;margin:0 auto;border-radius:16px;overflow:hidden;background:#000;aspect-ratio:3/4;}
+  .kiosk-frame video, .kiosk-frame img{width:100%;height:100%;object-fit:cover;display:block;}
+  .kiosk-overlay{position:absolute;inset:0;pointer-events:none;}
+  .kiosk-corner{position:absolute;width:26px;height:26px;border:3px solid var(--amber);}
+  .kiosk-corner.tl{top:14px;left:14px;border-right:none;border-bottom:none;border-radius:6px 0 0 0;}
+  .kiosk-corner.tr{top:14px;right:14px;border-left:none;border-bottom:none;border-radius:0 6px 0 0;}
+  .kiosk-corner.bl{bottom:14px;left:14px;border-right:none;border-top:none;border-radius:0 0 0 6px;}
+  .kiosk-corner.br{bottom:14px;right:14px;border-left:none;border-top:none;border-radius:0 0 6px 0;}
+  .kiosk-info{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(180deg,transparent,rgba(0,0,0,.75));padding:14px 12px 10px;display:flex;justify-content:space-between;align-items:center;}
+  .kiosk-nama{font-family:'Space Grotesk',sans-serif;color:#fff;font-size:14px;font-weight:700;}
+  .kiosk-jam{font-family:'IBM Plex Mono',monospace;color:var(--amber);font-size:13px;}
+
   footer{text-align:center;padding:20px;color:var(--muted);font-size:11.5px;}
 
   @media (prefers-reduced-motion:no-preference){ .panel.active{animation:fade .25s ease;} }
@@ -240,24 +257,43 @@
   </section>
 
   <section class="panel" id="panel-absensi">
-    <div class="card">
-      <h2><span class="eyebrow">📷</span> Absen sekarang</h2>
+    <div class="card" id="cardKioskSelect">
+      <h2><span class="eyebrow">📷</span> Absensi Digital</h2>
       <div class="row">
         <div>
           <label for="absNama">Pilih nama</label>
           <select id="absNama"></select>
         </div>
-        <div>
-          <label for="absFoto">Ambil / pilih foto</label>
-          <input id="absFoto" type="file" accept="image/*" capture="user">
+      </div>
+      <div class="kiosk-actions">
+        <button class="kiosk-btn masuk" id="btnBukaMasuk">🟢 Absen Masuk</button>
+        <button class="kiosk-btn keluar" id="btnBukaKeluar">🔴 Absen Keluar</button>
+      </div>
+    </div>
+
+    <div class="card" id="cardKioskCamera" style="display:none;">
+      <h2><span class="eyebrow" id="tipeAbsenLabel">ABSEN MASUK</span> Verifikasi Wajah</h2>
+      <div class="kiosk-frame">
+        <video id="kioskVideo" autoplay playsinline muted></video>
+        <canvas id="kioskCanvas" style="display:none;"></canvas>
+        <img id="kioskHasil" alt="Hasil jepretan" style="display:none;">
+        <div class="kiosk-overlay">
+          <div class="kiosk-corner tl"></div><div class="kiosk-corner tr"></div>
+          <div class="kiosk-corner bl"></div><div class="kiosk-corner br"></div>
         </div>
-        <div style="align-self:flex-end;">
-          <button id="btnAbsen" disabled>Kirim absensi</button>
+        <div class="kiosk-info">
+          <div class="kiosk-nama" id="kioskNamaTampil">-</div>
+          <div class="kiosk-jam" id="kioskJamTampil">--:--:--</div>
         </div>
       </div>
-      <div class="status-msg" id="msgAbsen"></div>
       <div class="status-msg" id="msgWajah"></div>
-      <img id="previewFoto" alt="Preview foto absensi" style="display:none;max-width:220px;border-radius:8px;margin-top:10px;border:1px solid var(--line);">
+      <div class="row" style="margin-top:12px;">
+        <button id="btnJepret">📸 Ambil Foto</button>
+        <button class="ghost" id="btnUlangFoto" style="display:none;">Ulangi</button>
+        <button id="btnKirimAbsen" style="display:none;" disabled>Kirim Absensi</button>
+        <button class="ghost" id="btnBatalKiosk">Batal</button>
+      </div>
+      <div class="status-msg" id="msgAbsen"></div>
     </div>
 
     <div class="card">
@@ -296,84 +332,158 @@ async function siapkanModelWajah(){
 let descriptorFotoAbsen = null;
 const THRESHOLD_WAJAH = 0.55;
 
-async function cekWajahDiFoto(file){
-  const msgWajah = document.getElementById("msgWajah");
-  const preview = document.getElementById("previewFoto");
-  const btnAbsen = document.getElementById("btnAbsen");
+/* ============== KIOSK KAMERA (masuk/keluar) ============== */
+let kioskStream = null;
+let kioskTipe = null;
+let kioskBlob = null;
 
+setInterval(()=>{
+  const el = document.getElementById("kioskJamTampil");
+  if (el) el.textContent = new Date().toLocaleTimeString('id-ID');
+}, 1000);
+
+async function bukaKiosk(tipe){
+  const nama = document.getElementById("absNama").value;
+  if (!nama){ alert("Pilih nama dulu."); return; }
+
+  kioskTipe = tipe;
+  document.getElementById("cardKioskSelect").style.display = "none";
+  document.getElementById("cardKioskCamera").style.display = "block";
+  document.getElementById("tipeAbsenLabel").textContent = tipe === "keluar" ? "ABSEN KELUAR" : "ABSEN MASUK";
+  document.getElementById("kioskNamaTampil").textContent = nama;
+
+  resetKioskUI();
+
+  try{
+    kioskStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+    document.getElementById("kioskVideo").srcObject = kioskStream;
+  }catch(e){
+    showMsg(document.getElementById("msgWajah"), "Gagal mengakses kamera: " + e.message + ". Pastikan izin kamera diaktifkan di browser.", "err");
+  }
+}
+
+function resetKioskUI(){
+  kioskBlob = null;
   fotoAdaWajah = false;
   descriptorFotoAbsen = null;
-  btnAbsen.disabled = true;
+  document.getElementById("kioskVideo").style.display = "block";
+  document.getElementById("kioskHasil").style.display = "none";
+  document.getElementById("btnJepret").style.display = "inline-block";
+  document.getElementById("btnUlangFoto").style.display = "none";
+  document.getElementById("btnKirimAbsen").style.display = "none";
+  document.getElementById("btnKirimAbsen").disabled = true;
+  hideMsg(document.getElementById("msgWajah"));
+  hideMsg(document.getElementById("msgAbsen"));
+}
 
-  const url = URL.createObjectURL(file);
-  preview.src = url;
-  preview.style.display = "block";
+function tutupKiosk(){
+  if (kioskStream){
+    kioskStream.getTracks().forEach(t=>t.stop());
+    kioskStream = null;
+  }
+  document.getElementById("cardKioskCamera").style.display = "none";
+  document.getElementById("cardKioskSelect").style.display = "block";
+}
 
-  showMsg(msgWajah, "Memeriksa apakah ada wajah di foto…", "info");
+document.getElementById("btnBukaMasuk").addEventListener("click", ()=>bukaKiosk("masuk"));
+document.getElementById("btnBukaKeluar").addEventListener("click", ()=>bukaKiosk("keluar"));
+document.getElementById("btnBatalKiosk").addEventListener("click", tutupKiosk);
 
-  await new Promise(resolve => { preview.onload = resolve; });
+document.getElementById("btnJepret").addEventListener("click", ()=>{
+  const video = document.getElementById("kioskVideo");
+  const canvas = document.getElementById("kioskCanvas");
+  const hasilImg = document.getElementById("kioskHasil");
+
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext("2d").drawImage(video, 0, 0);
+
+  canvas.toBlob(async (blob)=>{
+    kioskBlob = blob;
+    hasilImg.src = URL.createObjectURL(blob);
+    hasilImg.style.display = "block";
+    video.style.display = "none";
+    document.getElementById("btnJepret").style.display = "none";
+    document.getElementById("btnUlangFoto").style.display = "inline-block";
+
+    await new Promise(resolve => { hasilImg.onload = resolve; });
+    await cekWajahKiosk(hasilImg);
+  }, "image/jpeg", 0.92);
+});
+
+document.getElementById("btnUlangFoto").addEventListener("click", resetKioskUI);
+
+async function cekWajahKiosk(imgEl){
+  const msgWajah = document.getElementById("msgWajah");
+  const btnKirim = document.getElementById("btnKirimAbsen");
+  btnKirim.style.display = "inline-block";
+  btnKirim.disabled = true;
+
+  showMsg(msgWajah, "Memeriksa wajah…", "info");
   await siapkanModelWajah();
 
   if (!faceModelReady){
-    showMsg(msgWajah, "Model deteksi wajah gagal dimuat (cek koneksi internet). Foto tetap bisa dikirim tanpa verifikasi wajah.", "err");
-    fotoAdaWajah = true; // fallback: jangan blokir user kalau modelnya gagal load
-    btnAbsen.disabled = false;
+    showMsg(msgWajah, "Model wajah gagal dimuat. Foto tetap bisa dikirim tanpa verifikasi.", "err");
+    fotoAdaWajah = true;
+    btnKirim.disabled = false;
     return;
   }
 
   try{
-    const hasil = await faceapi.detectSingleFace(preview, new faceapi.TinyFaceDetectorOptions())
+    const hasil = await faceapi.detectSingleFace(imgEl, new faceapi.TinyFaceDetectorOptions())
       .withFaceLandmarks().withFaceDescriptor();
 
     if (!hasil){
       fotoAdaWajah = false;
-      showMsg(msgWajah, "❌ Wajah tidak terdeteksi di foto ini. Coba ambil foto ulang dengan wajah terlihat jelas.", "err");
-      btnAbsen.disabled = true;
+      showMsg(msgWajah, "❌ Wajah tidak terdeteksi. Tap 'Ulangi' dan coba lagi.", "err");
       return;
     }
 
     fotoAdaWajah = true;
     descriptorFotoAbsen = Array.from(hasil.descriptor);
-    cekKecocokanWajah();
+
+    const namaTerpilih = document.getElementById("absNama").value;
+    const karyawan = karyawanCache.find(k => k.nama === namaTerpilih);
+
+    if (!karyawan || !karyawan.faceDescriptor){
+      showMsg(msgWajah, "✅ Wajah terdeteksi. (Wajah untuk nama ini belum didaftarkan admin, absensi diterima tanpa verifikasi identitas.)", "info");
+      btnKirim.disabled = false;
+      return;
+    }
+
+    const jarak = faceapi.euclideanDistance(descriptorFotoAbsen, karyawan.faceDescriptor);
+    if (jarak < THRESHOLD_WAJAH){
+      showMsg(msgWajah, "✅ Wajah cocok dengan " + namaTerpilih + ".", "ok");
+      btnKirim.disabled = false;
+    }else{
+      showMsg(msgWajah, "❌ Wajah tidak cocok dengan " + namaTerpilih + ". Tap 'Ulangi'.", "err");
+      btnKirim.disabled = true;
+    }
   }catch(e){
     console.warn("Gagal deteksi wajah:", e);
-    fotoAdaWajah = true; // fallback: jangan blokir kalau proses deteksi error
+    fotoAdaWajah = true;
     showMsg(msgWajah, "Gagal memeriksa wajah, tapi foto tetap bisa dikirim.", "info");
-    btnAbsen.disabled = false;
+    btnKirim.disabled = false;
   }
 }
 
-function cekKecocokanWajah(){
-  const msgWajah = document.getElementById("msgWajah");
-  const btnAbsen = document.getElementById("btnAbsen");
-  const namaTerpilih = document.getElementById("absNama").value;
+document.getElementById("btnKirimAbsen").addEventListener("click", async ()=>{
+  const msg = document.getElementById("msgAbsen");
+  const nama = document.getElementById("absNama").value;
+  if (!kioskBlob || !fotoAdaWajah){ showMsg(msg, "Foto belum valid.", "err"); return; }
 
-  if (!fotoAdaWajah || !descriptorFotoAbsen){
-    return; // belum ada foto valid, biarkan status sebelumnya
+  showMsg(msg, "Mengirim…", "info");
+  try{
+    const fd = new FormData();
+    fd.append("nama", nama);
+    fd.append("tipe", kioskTipe);
+    fd.append("foto", kioskBlob, "absen.jpg");
+    await api("/absensi", { method:"POST", body: fd });
+    showMsg(msg, "Absensi " + (kioskTipe === "keluar" ? "keluar" : "masuk") + " berhasil dikirim.", "ok");
+    setTimeout(()=>{ tutupKiosk(); loadAbsensiGallery(); }, 1200);
+  }catch(e){
+    showMsg(msg, "Gagal mengirim: " + e.message, "err");
   }
-
-  const karyawan = karyawanCache.find(k => k.nama === namaTerpilih);
-  if (!karyawan || !karyawan.faceDescriptor){
-    showMsg(msgWajah, "✅ Wajah terdeteksi. (Wajah untuk nama ini belum didaftarkan admin, absensi diterima tanpa verifikasi identitas.)", "info");
-    btnAbsen.disabled = false;
-    return;
-  }
-
-  const jarak = faceapi.euclideanDistance(descriptorFotoAbsen, karyawan.faceDescriptor);
-  if (jarak < THRESHOLD_WAJAH){
-    showMsg(msgWajah, "✅ Wajah cocok dengan " + namaTerpilih + ". Siap dikirim.", "ok");
-    btnAbsen.disabled = false;
-  }else{
-    showMsg(msgWajah, "❌ Wajah tidak cocok dengan " + namaTerpilih + ". Pastikan pilih nama yang benar, atau ambil ulang foto.", "err");
-    btnAbsen.disabled = true;
-  }
-}
-
-document.getElementById("absNama").addEventListener("change", cekKecocokanWajah);
-
-document.getElementById("absFoto").addEventListener("change", (e)=>{
-  const file = e.target.files[0];
-  if (file) cekWajahDiFoto(file);
 });
 
 const POLA_SHIFT = ["OFF","2","2","2","OFF","1","1","1","OFF","3","3","3"];
@@ -688,31 +798,6 @@ function populateAbsenNama(karyawan){
   sel.innerHTML = karyawan.map(k=>`<option value="${escapeHtml(k.nama)}">${escapeHtml(k.nama)}</option>`).join("");
 }
 
-document.getElementById("btnAbsen").addEventListener("click", async ()=>{
-  const msg = document.getElementById("msgAbsen");
-  const nama = document.getElementById("absNama").value;
-  const fileInput = document.getElementById("absFoto");
-  if (!nama){ showMsg(msg,"Pilih nama dulu (muat jadwal dulu di tab Jadwal Shift kalau daftar kosong).","err"); return; }
-  if (!fileInput.files.length){ showMsg(msg,"Ambil / pilih foto dulu.","err"); return; }
-  if (!fotoAdaWajah){ showMsg(msg,"Foto belum lolos pemeriksaan wajah. Ambil ulang foto dengan wajah terlihat jelas.","err"); return; }
-  showMsg(msg, "Mengirim…", "info");
-  try{
-    const fd = new FormData();
-    fd.append("nama", nama);
-    fd.append("foto", fileInput.files[0]);
-    await api("/absensi", { method:"POST", body: fd });
-    showMsg(msg, "Absensi berhasil dikirim.", "ok");
-    fileInput.value = "";
-    fotoAdaWajah = false;
-    document.getElementById("btnAbsen").disabled = true;
-    document.getElementById("previewFoto").style.display = "none";
-    hideMsg(document.getElementById("msgWajah"));
-    loadAbsensiGallery();
-  }catch(e){
-    showMsg(msg, "Gagal mengirim: " + e.message, "err");
-  }
-});
-
 async function loadAbsensiGallery(){
   const gal = document.getElementById("galleryAbsen");
   gal.innerHTML = "<p style='color:var(--muted);font-size:13px;'>Memuat…</p>";
@@ -721,13 +806,30 @@ async function loadAbsensiGallery(){
     if (!data.length){ gal.innerHTML = "<p style='color:var(--muted);font-size:13px;'>Belum ada absensi.</p>"; return; }
     gal.innerHTML = data.map(a=>{
       const waktu = new Date(a.waktu).toLocaleString('id-ID');
+      const tipeLabel = a.tipe === "keluar" ? "🔴 Keluar" : "🟢 Masuk";
+      const hapusBtn = adminToken
+        ? `<button class="danger" data-hapus-absen="${a.id}" style="margin-top:4px;padding:3px 8px;font-size:10px;">Hapus</button>`
+        : "";
       return `<figure>
-        <img src="${API_BASE}${a.foto_url}" alt="Foto absensi ${escapeHtml(a.nama)}" loading="lazy">
-        <figcaption><b>${escapeHtml(a.nama)}</b>${waktu}</figcaption>
+        <img src="${a.foto_url}" alt="Foto absensi ${escapeHtml(a.nama)}" loading="lazy">
+        <figcaption><b>${escapeHtml(a.nama)}</b>${tipeLabel} · ${waktu}${hapusBtn}</figcaption>
       </figure>`;
     }).join("");
+    gal.querySelectorAll("button[data-hapus-absen]").forEach(btn=>{
+      btn.addEventListener("click", ()=>hapusAbsensi(btn.dataset.hapusAbsen));
+    });
   }catch(e){
     gal.innerHTML = `<p style='color:var(--red);font-size:13px;'>Gagal memuat: ${escapeHtml(e.message)}</p>`;
+  }
+}
+
+async function hapusAbsensi(id){
+  if (!confirm("Hapus data absensi ini beserta fotonya?")) return;
+  try{
+    await api("/absensi/" + id, { method: "DELETE" });
+    loadAbsensiGallery();
+  }catch(e){
+    alert("Gagal menghapus: " + e.message);
   }
 }
 
