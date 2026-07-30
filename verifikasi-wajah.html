@@ -2,12 +2,43 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
 
     <title>ShiftBoard Face Verification</title>
+
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: #0B1220;
+            color: #FFFFFF;
+            font-family: Arial, sans-serif;
+        }
+
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #status {
+            width: 90%;
+            text-align: center;
+            font-size: 16px;
+            line-height: 1.5;
+            color: #D8DEE9;
+        }
+    </style>
 </head>
 
 <body>
+
+<div id="status">
+    ShiftBoard Face Verification
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 
@@ -20,7 +51,22 @@ let modelReady = false;
 
 
 // =====================================================
-// SIAPKAN MODEL FACE API
+// STATUS HTML
+// =====================================================
+
+function tampilStatus(teks) {
+
+    const status =
+        document.getElementById("status");
+
+    if (status) {
+        status.innerText = teks;
+    }
+}
+
+
+// =====================================================
+// LOAD MODEL FACE API
 // =====================================================
 
 async function siapkanModel() {
@@ -28,6 +74,10 @@ async function siapkanModel() {
     if (modelReady) {
         return;
     }
+
+    tampilStatus(
+        "⏳ Menyiapkan sistem pengenalan wajah..."
+    );
 
     await Promise.all([
 
@@ -46,39 +96,89 @@ async function siapkanModel() {
     ]);
 
     modelReady = true;
+
+    tampilStatus(
+        "✅ Sistem pengenalan wajah siap."
+    );
 }
 
 
 // =====================================================
-// FUNGSI VERIFIKASI WAJAH
-// DIPANGGIL DARI ANDROID
+// CALLBACK KE ANDROID
 // =====================================================
 
-window.mulaiVerifikasi = async function(
-    base64Foto,
-    descriptorJson
+function kirimHasil(
+    cocok,
+    nama,
+    jarak,
+    pesan
 ) {
 
     try {
 
-        // ---------------------------------------------
+        if (
+            typeof Android !== "undefined" &&
+            Android.onHasilVerifikasi
+        ) {
+
+            Android.onHasilVerifikasi(
+                cocok,
+                nama || "",
+                Number(jarak || 999),
+                pesan || ""
+            );
+
+        }
+
+    } catch (e) {
+
+        console.log(
+            "Callback Android error:",
+            e
+        );
+    }
+}
+
+
+// =====================================================
+// FUNGSI UTAMA
+// DIPANGGIL ANDROID
+//
+// base64Foto
+// daftarKaryawanJson
+// =====================================================
+
+window.mulaiVerifikasi = async function(
+    base64Foto,
+    daftarKaryawanJson
+) {
+
+    try {
+
+        // =================================================
         // LOAD MODEL
-        // ---------------------------------------------
+        // =================================================
 
         await siapkanModel();
 
 
-        // ---------------------------------------------
+        // =================================================
         // VALIDASI FOTO
-        // ---------------------------------------------
+        // =================================================
 
         if (
             !base64Foto ||
             base64Foto.length < 100
         ) {
 
-            Android.onHasilVerifikasi(
+            tampilStatus(
+                "❌ Foto tidak valid."
+            );
+
+            kirimHasil(
                 false,
+                "",
+                999,
                 "Foto tidak valid."
             );
 
@@ -86,27 +186,115 @@ window.mulaiVerifikasi = async function(
         }
 
 
-        // ---------------------------------------------
-        // LOAD FOTO BASE64
-        // ---------------------------------------------
+        // =================================================
+        // VALIDASI DATA KARYAWAN
+        // =================================================
 
-        const img = new Image();
+        if (
+            !daftarKaryawanJson ||
+            daftarKaryawanJson.length < 2
+        ) {
 
-        img.src = base64Foto;
+            tampilStatus(
+                "❌ Data karyawan belum tersedia."
+            );
+
+            kirimHasil(
+                false,
+                "",
+                999,
+                "Data karyawan belum tersedia."
+            );
+
+            return;
+        }
+
+
+        // =================================================
+        // PARSE DATA KARYAWAN
+        // =================================================
+
+        let daftarKaryawan;
+
+        try {
+
+            daftarKaryawan =
+                JSON.parse(
+                    daftarKaryawanJson
+                );
+
+        } catch (e) {
+
+            tampilStatus(
+                "❌ Data karyawan tidak valid."
+            );
+
+            kirimHasil(
+                false,
+                "",
+                999,
+                "Data karyawan tidak valid."
+            );
+
+            return;
+        }
+
+
+        if (
+            !Array.isArray(
+                daftarKaryawan
+            ) ||
+            daftarKaryawan.length === 0
+        ) {
+
+            tampilStatus(
+                "❌ Belum ada data wajah karyawan."
+            );
+
+            kirimHasil(
+                false,
+                "",
+                999,
+                "Belum ada data wajah karyawan."
+            );
+
+            return;
+        }
+
+
+        // =================================================
+        // LOAD FOTO
+        // =================================================
+
+        tampilStatus(
+            "📷 Memuat foto..."
+        );
+
+        const img =
+            new Image();
+
+        img.src =
+            base64Foto;
 
         await new Promise(
             (resolve, reject) => {
 
-                img.onload = resolve;
-                img.onerror = reject;
+                img.onload =
+                    resolve;
 
+                img.onerror =
+                    reject;
             }
         );
 
 
-        // ---------------------------------------------
+        // =================================================
         // DETEKSI WAJAH
-        // ---------------------------------------------
+        // =================================================
+
+        tampilStatus(
+            "🔍 Mendeteksi wajah..."
+        );
 
         const hasil =
             await faceapi
@@ -121,14 +309,20 @@ window.mulaiVerifikasi = async function(
                 .withFaceDescriptor();
 
 
-        // ---------------------------------------------
+        // =================================================
         // WAJAH TIDAK TERDETEKSI
-        // ---------------------------------------------
+        // =================================================
 
         if (!hasil) {
 
-            Android.onHasilVerifikasi(
+            tampilStatus(
+                "❌ Wajah tidak terdeteksi."
+            );
+
+            kirimHasil(
                 false,
+                "",
+                999,
                 "Wajah tidak terdeteksi di foto."
             );
 
@@ -136,39 +330,187 @@ window.mulaiVerifikasi = async function(
         }
 
 
-        // ---------------------------------------------
-        // PARSE DESCRIPTOR KARYAWAN
-        // ---------------------------------------------
+        // =================================================
+        // DESCRIPTOR FOTO
+        // =================================================
 
-        let descriptorTarget;
-
-        try {
-
-            descriptorTarget =
-                JSON.parse(descriptorJson);
-
-        } catch (e) {
-
-            Android.onHasilVerifikasi(
-                false,
-                "Data wajah karyawan tidak valid."
+        const descriptorFoto =
+            Array.from(
+                hasil.descriptor
             );
 
-            return;
+
+        // =================================================
+        // CARI WAJAH TERDEKAT
+        // =================================================
+
+        let namaTerbaik = "";
+
+        let jarakTerbaik = 999;
+
+        let jumlahValid = 0;
+
+
+        for (
+            let i = 0;
+            i < daftarKaryawan.length;
+            i++
+        ) {
+
+            const karyawan =
+                daftarKaryawan[i];
+
+
+            // ---------------------------------------------
+            // NAMA
+            // ---------------------------------------------
+
+            const nama =
+                String(
+                    karyawan.nama || ""
+                ).trim();
+
+
+            // ---------------------------------------------
+            // DESCRIPTOR
+            // ---------------------------------------------
+
+            let descriptor =
+                karyawan.faceDescriptor;
+
+
+            if (
+                !nama ||
+                !descriptor
+            ) {
+
+                continue;
+            }
+
+
+            // ---------------------------------------------
+            // DESCRIPTOR BISA BERUPA STRING JSON
+            // ---------------------------------------------
+
+            if (
+                typeof descriptor === "string"
+            ) {
+
+                try {
+
+                    descriptor =
+                        JSON.parse(
+                            descriptor
+                        );
+
+                } catch (e) {
+
+                    continue;
+                }
+            }
+
+
+            // ---------------------------------------------
+            // VALIDASI 128 ANGKA
+            // ---------------------------------------------
+
+            if (
+                !Array.isArray(descriptor) ||
+                descriptor.length !== 128
+            ) {
+
+                continue;
+            }
+
+
+            // ---------------------------------------------
+            // KONVERSI ANGKA
+            // ---------------------------------------------
+
+            const descriptorTarget =
+                descriptor.map(
+                    Number
+                );
+
+
+            // ---------------------------------------------
+            // CEK NILAI VALID
+            // ---------------------------------------------
+
+            let valid =
+                true;
+
+            for (
+                let j = 0;
+                j < descriptorTarget.length;
+                j++
+            ) {
+
+                if (
+                    !Number.isFinite(
+                        descriptorTarget[j]
+                    )
+                ) {
+
+                    valid = false;
+
+                    break;
+                }
+            }
+
+
+            if (!valid) {
+                continue;
+            }
+
+
+            jumlahValid++;
+
+
+            // ---------------------------------------------
+            // HITUNG JARAK
+            // ---------------------------------------------
+
+            const jarak =
+                faceapi.euclideanDistance(
+                    descriptorFoto,
+                    descriptorTarget
+                );
+
+
+            // ---------------------------------------------
+            // SIMPAN TERDEKAT
+            // ---------------------------------------------
+
+            if (
+                jarak < jarakTerbaik
+            ) {
+
+                jarakTerbaik =
+                    jarak;
+
+                namaTerbaik =
+                    nama;
+            }
         }
 
 
-        // ---------------------------------------------
-        // CEK DESCRIPTOR
-        // ---------------------------------------------
+        // =================================================
+        // TIDAK ADA DESCRIPTOR VALID
+        // =================================================
 
         if (
-            !Array.isArray(descriptorTarget) ||
-            descriptorTarget.length !== 128
+            jumlahValid === 0
         ) {
 
-            Android.onHasilVerifikasi(
+            tampilStatus(
+                "❌ Belum ada descriptor wajah karyawan yang valid."
+            );
+
+            kirimHasil(
                 false,
+                "",
+                999,
                 "Data wajah karyawan belum tersedia."
             );
 
@@ -176,59 +518,108 @@ window.mulaiVerifikasi = async function(
         }
 
 
-        // ---------------------------------------------
-        // HITUNG JARAK WAJAH
-        // ---------------------------------------------
+        // =================================================
+        // BATAS KECOCOKAN
+        // =================================================
 
-        const jarak =
-            faceapi.euclideanDistance(
-                Array.from(hasil.descriptor),
-                descriptorTarget
+        const batas =
+            0.55;
+
+
+        // =================================================
+        // WAJAH COCOK
+        // =================================================
+
+        if (
+            jarakTerbaik < batas
+        ) {
+
+            const pesan =
+                "Wajah cocok dengan " +
+                namaTerbaik +
+                " (jarak " +
+                jarakTerbaik.toFixed(3) +
+                ")";
+
+
+            tampilStatus(
+                "✅ " + pesan
             );
 
 
-        // ---------------------------------------------
-        // BATAS KECocokan
-        // ---------------------------------------------
-
-        const batas = 0.55;
-
-
-        // ---------------------------------------------
-        // HASIL VERIFIKASI
-        // ---------------------------------------------
-
-        if (jarak < batas) {
-
-            Android.onHasilVerifikasi(
+            kirimHasil(
                 true,
-                "Wajah cocok (jarak " +
-                jarak.toFixed(3) +
-                ")"
+                namaTerbaik,
+                jarakTerbaik,
+                pesan
             );
 
-        } else {
 
-            Android.onHasilVerifikasi(
-                false,
-                "Wajah tidak cocok dengan nama yang dipilih (jarak " +
-                jarak.toFixed(3) +
-                ")"
-            );
-
+            return;
         }
+
+
+        // =================================================
+        // WAJAH TIDAK COCOK
+        // =================================================
+
+        const pesanTidakCocok =
+            "Wajah tidak cocok dengan data karyawan. " +
+            "Jarak terdekat: " +
+            jarakTerbaik.toFixed(3);
+
+
+        tampilStatus(
+            "❌ " +
+            pesanTidakCocok
+        );
+
+
+        kirimHasil(
+            false,
+            namaTerbaik,
+            jarakTerbaik,
+            pesanTidakCocok
+        );
 
     } catch (e) {
 
-        Android.onHasilVerifikasi(
-            false,
-            "Error verifikasi wajah: " +
+        console.error(
+            "Error:",
+            e
+        );
+
+        tampilStatus(
+            "❌ Error verifikasi wajah: " +
             e.message
         );
 
+        kirimHasil(
+            false,
+            "",
+            999,
+            "Error verifikasi wajah: " +
+            e.message
+        );
     }
-
 };
+
+
+// =====================================================
+// TEST STATUS
+// =====================================================
+
+window.addEventListener(
+    "load",
+    function() {
+
+        tampilStatus(
+            "ShiftBoard Face Verification\n" +
+            "Siap digunakan."
+        );
+
+    }
+);
 
 </script>
 
