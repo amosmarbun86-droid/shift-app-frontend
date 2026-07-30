@@ -5,39 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <title>ShiftBoard Face Verification</title>
-
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background: #0B1220;
-            color: white;
-            text-align: center;
-            padding: 30px;
-        }
-
-        h2 {
-            margin-top: 30px;
-        }
-
-        #status {
-            margin-top: 20px;
-            padding: 15px;
-            border-radius: 10px;
-            background: #1b2638;
-        }
-    </style>
 </head>
 
 <body>
-
-<h2>ShiftBoard</h2>
-
-<p>Face Verification</p>
-
-<div id="status">
-    Memuat sistem...
-</div>
-
 
 <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 
@@ -46,58 +16,219 @@
 const MODEL_URL =
     "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights";
 
+let modelReady = false;
 
-function status(teks) {
 
-    document.getElementById("status").innerText = teks;
+// =====================================================
+// SIAPKAN MODEL FACE API
+// =====================================================
 
+async function siapkanModel() {
+
+    if (modelReady) {
+        return;
+    }
+
+    await Promise.all([
+
+        faceapi.nets.tinyFaceDetector.loadFromUri(
+            MODEL_URL
+        ),
+
+        faceapi.nets.faceLandmark68Net.loadFromUri(
+            MODEL_URL
+        ),
+
+        faceapi.nets.faceRecognitionNet.loadFromUri(
+            MODEL_URL
+        )
+
+    ]);
+
+    modelReady = true;
 }
 
 
-async function testModel() {
+// =====================================================
+// FUNGSI VERIFIKASI WAJAH
+// DIPANGGIL DARI ANDROID
+// =====================================================
+
+window.mulaiVerifikasi = async function(
+    base64Foto,
+    descriptorJson
+) {
 
     try {
 
-        status("⏳ Memuat model face recognition...");
+        // ---------------------------------------------
+        // LOAD MODEL
+        // ---------------------------------------------
+
+        await siapkanModel();
 
 
-        await Promise.all([
+        // ---------------------------------------------
+        // VALIDASI FOTO
+        // ---------------------------------------------
 
-            faceapi.nets.tinyFaceDetector.loadFromUri(
-                MODEL_URL
-            ),
+        if (
+            !base64Foto ||
+            base64Foto.length < 100
+        ) {
 
-            faceapi.nets.faceLandmark68Net.loadFromUri(
-                MODEL_URL
-            ),
+            Android.onHasilVerifikasi(
+                false,
+                "Foto tidak valid."
+            );
 
-            faceapi.nets.faceRecognitionNet.loadFromUri(
-                MODEL_URL
-            )
-
-        ]);
+            return;
+        }
 
 
-        status(
-            "✅ Face verification siap digunakan."
+        // ---------------------------------------------
+        // LOAD FOTO BASE64
+        // ---------------------------------------------
+
+        const img = new Image();
+
+        img.src = base64Foto;
+
+        await new Promise(
+            (resolve, reject) => {
+
+                img.onload = resolve;
+                img.onerror = reject;
+
+            }
         );
 
+
+        // ---------------------------------------------
+        // DETEKSI WAJAH
+        // ---------------------------------------------
+
+        const hasil =
+            await faceapi
+                .detectSingleFace(
+                    img,
+                    new faceapi.TinyFaceDetectorOptions({
+                        inputSize: 416,
+                        scoreThreshold: 0.5
+                    })
+                )
+                .withFaceLandmarks()
+                .withFaceDescriptor();
+
+
+        // ---------------------------------------------
+        // WAJAH TIDAK TERDETEKSI
+        // ---------------------------------------------
+
+        if (!hasil) {
+
+            Android.onHasilVerifikasi(
+                false,
+                "Wajah tidak terdeteksi di foto."
+            );
+
+            return;
+        }
+
+
+        // ---------------------------------------------
+        // PARSE DESCRIPTOR KARYAWAN
+        // ---------------------------------------------
+
+        let descriptorTarget;
+
+        try {
+
+            descriptorTarget =
+                JSON.parse(descriptorJson);
+
+        } catch (e) {
+
+            Android.onHasilVerifikasi(
+                false,
+                "Data wajah karyawan tidak valid."
+            );
+
+            return;
+        }
+
+
+        // ---------------------------------------------
+        // CEK DESCRIPTOR
+        // ---------------------------------------------
+
+        if (
+            !Array.isArray(descriptorTarget) ||
+            descriptorTarget.length !== 128
+        ) {
+
+            Android.onHasilVerifikasi(
+                false,
+                "Data wajah karyawan belum tersedia."
+            );
+
+            return;
+        }
+
+
+        // ---------------------------------------------
+        // HITUNG JARAK WAJAH
+        // ---------------------------------------------
+
+        const jarak =
+            faceapi.euclideanDistance(
+                Array.from(hasil.descriptor),
+                descriptorTarget
+            );
+
+
+        // ---------------------------------------------
+        // BATAS KECocokan
+        // ---------------------------------------------
+
+        const batas = 0.55;
+
+
+        // ---------------------------------------------
+        // HASIL VERIFIKASI
+        // ---------------------------------------------
+
+        if (jarak < batas) {
+
+            Android.onHasilVerifikasi(
+                true,
+                "Wajah cocok (jarak " +
+                jarak.toFixed(3) +
+                ")"
+            );
+
+        } else {
+
+            Android.onHasilVerifikasi(
+                false,
+                "Wajah tidak cocok dengan nama yang dipilih (jarak " +
+                jarak.toFixed(3) +
+                ")"
+            );
+
+        }
 
     } catch (e) {
 
-        status(
-            "❌ Gagal memuat model: " +
+        Android.onHasilVerifikasi(
+            false,
+            "Error verifikasi wajah: " +
             e.message
         );
 
-        console.error(e);
-
     }
 
-}
-
-
-testModel();
+};
 
 </script>
 
