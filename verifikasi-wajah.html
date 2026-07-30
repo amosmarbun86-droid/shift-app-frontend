@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<script>
+const MODEL_URL = "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights";
+let modelReady = false;
+
+async function siapkanModel(){
+  if (modelReady) return;
+  await Promise.all([
+    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+  ]);
+  modelReady = true;
+}
+
+window.mulaiVerifikasi = async function(base64Foto, descriptorJson) {
+  try {
+    await siapkanModel();
+    const img = new Image();
+    img.src = base64Foto;
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+    });
+
+    const hasil = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
+      .withFaceLandmarks().withFaceDescriptor();
+
+    if (!hasil) {
+      Android.onHasilVerifikasi(false, "Wajah tidak terdeteksi di foto.");
+      return;
+    }
+
+    const descriptorTarget = JSON.parse(descriptorJson);
+    if (!descriptorTarget || descriptorTarget.length !== 128) {
+      Android.onHasilVerifikasi(true, "Wajah terdeteksi (belum ada data wajah terdaftar untuk nama ini).");
+      return;
+    }
+
+    const jarak = faceapi.euclideanDistance(Array.from(hasil.descriptor), descriptorTarget);
+    if (jarak < 0.55) {
+      Android.onHasilVerifikasi(true, "Wajah cocok (jarak " + jarak.toFixed(3) + ")");
+    } else {
+      Android.onHasilVerifikasi(false, "Wajah tidak cocok dengan nama yang dipilih (jarak " + jarak.toFixed(3) + ")");
+    }
+  } catch (e) {
+    Android.onHasilVerifikasi(false, "Error: " + e.message);
+  }
+};
+</script>
+</body>
+</html>
